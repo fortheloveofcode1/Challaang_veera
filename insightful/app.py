@@ -3,8 +3,10 @@ import requests
 from bs4 import BeautifulSoup
 from googlesearch import search
 from transformers import pipeline
-from openai_integration import call_openai_api
 from concurrent.futures import ThreadPoolExecutor
+import sqlite3
+from openai_integration import call_openai_api
+
 
 app = Flask(__name__)
 
@@ -13,6 +15,16 @@ summarizer = pipeline("summarization")
 
 def process_url(url):
     try:
+        # Connect to SQLite database
+        conn = sqlite3.connect('url_cache.db')
+        c = conn.cursor()
+
+        # Check if the URL is already cached
+        c.execute("SELECT summary FROM url_cache WHERE url=?", (url,))
+        cached_summary = c.fetchone()
+        if cached_summary:
+            return cached_summary[0]
+
         response = requests.get(url, timeout=5)
         if response.status_code != 200:
             print(f"Error: Received status code {response.status_code} for URL: {url}")
@@ -24,10 +36,18 @@ def process_url(url):
         chunks = [text_content[i:i+1000] for i in range(0, len(text_content), 1000)]
         # Use the summarizer here
         summaries = [summarizer(chunk, max_length=60, min_length=30, do_sample=False)[0]['summary_text'] for chunk in chunks]
-        return ' '.join(summaries)
+        # Combine the summaries into one aggregated summary
+        aggregated_summary = ' '.join(summaries)
+        # Cache the aggregated summary in SQLite database
+        c.execute("INSERT INTO url_cache (url, summary) VALUES (?, ?)", (url, aggregated_summary))
+        conn.commit()
+        return aggregated_summary
     except Exception as e:
         print(f"Error processing URL: {url}: {e}")
         return None
+    finally:
+        # Close SQLite connection
+        conn.close()
 
 @app.route('/')
 def index():
@@ -35,6 +55,7 @@ def index():
 
 @app.route('/search')
 def search_and_summarize():
+    print("in search")
     query = request.args.get('query')
     seo_query = f"{query} -site:wikipedia.org"
     
@@ -51,13 +72,16 @@ def search_and_summarize():
     # Combine the summaries into one aggregated summary
     aggregated_summary = ' '.join(summaries)[:1000]
     print(aggregated_summary)
-    
-    # Call the OpenAI API only if the aggregated summary is not empty
-    if aggregated_summary:
-        openai_generated_text = call_openai_api(aggregated_summary)
-        return openai_generated_text
-    else:
-        return "No valid summary to generate text from."
+    # Call the OpenAI API to generate text based on the aggregated summary
+    openai_generated_text = call_openai_api(aggregated_summary)
+
+    return openai_generated_text
+
+@app.route('/display')
+def display_information():
+    query = request.args.get('query')
+    return render_template('display-info.html', query=query)
+
 
 if __name__ == '__main__':
     app.run(debug=True)

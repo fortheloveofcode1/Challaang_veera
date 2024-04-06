@@ -1,8 +1,10 @@
 import requests
 import json
+import nltk
+nltk.download('punkt')
 
 # Set your OpenAI API key
-api_key = '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'
+api_key = ''
 
 def call_openai_api(aggregated_summary):
     # Define the endpoint URL
@@ -17,11 +19,10 @@ def call_openai_api(aggregated_summary):
 
     # Define the request payload
     payload = {
-        "model": "text-davinci-002",
+        "model": "gpt-3.5-turbo-0125",
         "messages": [{"role": "user", "content": aggregated_summary}],
-        "temperature": 0.5  # Adjust the temperature as needed
+        "temperature": 0.5
     }
-
     # Make the POST request to the OpenAI API
     response = requests.post(url, headers=headers, json=payload)
 
@@ -37,18 +38,16 @@ def call_openai_api(aggregated_summary):
     # Extract the generated text from the response
     try:
         generated_text = data['choices'][0]['message']['content']
-        # Split the text into sentences while preserving the delimiter '.'
-        sentences = generated_text.split('. ')
-        # Concatenate sentences if needed
-        formatted_sentences = []
-        for i in range(len(sentences)):
-            if i > 0 and sentences[i][0].islower():
-                formatted_sentences[-1] += '. ' + sentences[i]
-            else:
-                formatted_sentences.append(sentences[i])
-        print(formatted_sentences)
-        return formatted_sentences
+        # Tokenize the text into sentences
+        sentences = nltk.sent_tokenize(generated_text)
+        print(sentences)
+        return sentences
     except KeyError:
         print("Error: Response does not contain the expected structure.")
         return None
 
+# Example usage
+aggregated_summary = "Your aggregated summary here"
+generated_sentences = call_openai_api(aggregated_summary)
+if generated_sentences:
+    print(generated_sentences)
